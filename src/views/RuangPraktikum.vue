@@ -488,6 +488,16 @@ export default {
       authenticated: 'auth/authenticated',
       user: 'auth/user',
     }),
+    filteredModulList() {
+      const q = (this.modulFilter || '').toString().toLowerCase();
+      if (!q) return this.modulList || [];
+      return (this.modulList || []).filter(m => {
+        const judul = (m.judul || '').toString().toLowerCase();
+        const file = (m.file_name || '').toString().toLowerCase();
+        const uploader = (m.uploader_name || '').toString().toLowerCase();
+        return judul.includes(q) || file.includes(q) || uploader.includes(q);
+      });
+    },
     // ❌ Hapus dependency ke 'url' (tidak dipakai lagi)
   },
   methods: {
@@ -573,6 +583,11 @@ export default {
 
     // ✅ Simpan dengan link_tambahan — pakai this.$toast
     async simpan() {
+      if (!this.judul || !this.judul.toString().trim()) {
+        this.$toast.warning('Judul materi wajib diisi');
+        return;
+      }
+
       if (!this.selectedModulId) {
         this.$toast.warning('Harap pilih modul dari laboran');
         return;
@@ -584,7 +599,11 @@ export default {
       form.append('judul', this.judul);
       form.append('des', this.des);
       form.append('modul_id', this.selectedModulId);
-      form.append('link_tambahan', this.link_tambahan || '');
+      // Only include link_tambahan when user provided one. Sending an
+      // empty string causes server-side "nullable|url" validation to fail.
+      if (this.link_tambahan) {
+        form.append('link_tambahan', this.link_tambahan);
+      }
 
       try {
         await axios.post('materi_ajar', form);
@@ -593,7 +612,19 @@ export default {
         this.getMateri();
       } catch (error) {
         console.error('Error simpan materi:', error);
-        this.$toast.error('Gagal menyimpan materi');
+        // Show more helpful message when validation fails
+        const resp = error.response && error.response.data;
+        if (resp && resp.message) {
+          // If Laravel sends validation errors, show the first one
+          if (resp.errors) {
+            const first = Object.values(resp.errors)[0];
+            this.$toast.error(first[0] || resp.message);
+          } else {
+            this.$toast.error(resp.message);
+          }
+        } else {
+          this.$toast.error('Gagal menyimpan materi');
+        }
       }
     },
 
